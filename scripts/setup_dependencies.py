@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -13,35 +14,80 @@ import urllib.request
 from urllib.parse import quote
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from studio_runtime import (ROOT, data_dir, choose_drafts_root, find_executable,
-                            find_skill, load_config, save_config, prepare_tool_paths)
+                            find_skill, load_config, save_config, prepare_tool_paths,
+                            tool_command)
 
 DRAFT_PACKAGE = "pyJianYingDraft==0.3.1"
 COLI_PACKAGE = "@marswave/coli@0.0.20"
 TTS_PACKAGE = "websockets==15.0.1"
+IMAGEGEN_COMMIT = "49f948faa9258a0c61caceaf225e179651397431"
 FEATURES = {"write", "storyboard", "images", "tts", "asr", "draft"}
+DEPENDENCIES = ROOT / "scripts/dependencies"
 
 
 def run(command: list[str], **kwargs) -> subprocess.CompletedProcess:
-    return subprocess.run(command, check=True, capture_output=True, text=True,
+    kwargs.setdefault("cwd", ROOT)
+    return subprocess.run(tool_command(command[0], *command[1:]), check=True, capture_output=True, text=True,
                           encoding="utf-8", errors="replace", timeout=600, **kwargs)
+
+
+def requirement_files(features: set[str]) -> list[Path]:
+    files = [DEPENDENCIES / f"requirements-{name}.lock" for name in ("draft", "tts") if name in features]
+    if any(not path.is_file() for path in files):
+        raise FileNotFoundError("The reviewed Python dependency lock is missing")
+    return files
 
 
 def python_packages(features: set[str]) -> list[str]:
     packages = []
-    if "draft" in features:
-        packages = [DRAFT_PACKAGE, "Pillow>=10,<13", "numpy>=1.24,<3"]
-    if "tts" in features:
-        packages.append(TTS_PACKAGE)
+    for path in requirement_files(features):
+        count = 0
+        for line in path.read_text(encoding="utf-8").splitlines():
+            match = re.fullmatch(r'([A-Za-z0-9_.-]+==[A-Za-z0-9_.+-]+)(?: ; sys_platform == "(win32)")? \\', line)
+            if match and (not match[2] or sys.platform == match[2]):
+                packages.append(match[1])
+                count += 1
+        if not count:
+            raise ValueError("The Python dependency lock contains no applicable pinned requirements")
     return packages
+
+
+def version_check(features: set[str]) -> str:
+    expected = dict(item.split("==", 1) for item in python_packages(features))
+    return ("from importlib.metadata import version;"
+            f"assert all(version(n)==v for n,v in {expected!r}.items()),'Locked dependency versions differ';")
+
+
+def install_coli(npm: str) -> str:
+    """Install the reviewed npm closure without lifecycle scripts or global writes."""
+    source = DEPENDENCIES / "coli"
+    lock_bytes = (source / "package-lock.json").read_bytes()
+    lock = json.loads(lock_bytes)
+    if lock.get("lockfileVersion") != 3 or lock.get("packages", {}).get("", {}).get("dependencies") != {"@marswave/coli": "0.0.20"}:
+        raise ValueError("Unexpected Coli dependency lock")
+    for name, package in lock["packages"].items():
+        if name and (not package.get("resolved", "").startswith("https://registry.npmjs.org/") or not re.fullmatch(r"sha512-[A-Za-z0-9+/]+=*", package.get("integrity", ""))):
+            raise ValueError("Every npm dependency needs a registry URL and integrity hash")
+    prefix = data_dir() / "npm" / hashlib.sha256(lock_bytes).hexdigest()[:16]
+    binary = prefix / "node_modules/.bin" / ("coli.cmd" if os.name == "nt" else "coli")
+    if not binary.is_file():
+        prefix.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source / "package.json", prefix / "package.json")
+        (prefix / "package-lock.json").write_bytes(lock_bytes)
+        run([npm, "ci", "--prefix", str(prefix), "--ignore-scripts", "--no-audit", "--no-fund", "--registry=https://registry.npmjs.org"])
+    if not binary.is_file():
+        raise RuntimeError("Locked Coli installation did not produce its CLI executable")
+    return str(binary)
 
 
 def install_skill(repo: str, ref: str, subdir: str, destination: Path) -> None:
     """Fetch an explicit revision into staging; never overwrite an existing skill."""
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
         raise ValueError("Repository must be a public GitHub owner/repo, without credentials")
-    if not re.fullmatch(r"[A-Za-z0-9_.\-/]+", ref) or ref.startswith("-"):
-        raise ValueError("Invalid Git revision")
+    if not re.fullmatch(r"[a-fA-F0-9]{40}", ref):
+        raise ValueError("External skills require a full immutable Git commit SHA")
     if destination.exists():
         raise FileExistsError("Dependency destination exists; choose a different directory or reuse it")
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -68,6 +114,7 @@ def install_skill(repo: str, ref: str, subdir: str, destination: Path) -> None:
             if len(children) != 1 or not children[0].is_dir():
                 raise ValueError("Unexpected skill archive layout")
             checkout = children[0]
+        checkout = checkout.resolve()
         source = (checkout / subdir).resolve()
         if not source.is_relative_to(checkout) or not (source / "SKILL.md").is_file():
             raise ValueError("Downloaded dependency has no SKILL.md at the selected path")
@@ -112,7 +159,7 @@ def inspect(features: set[str], python: Path,
         add("imagegen", False, bool(imagegen), "Optional helper; a working host image tool/provider is still required")
     if "tts" in features:
         try:
-            run([str(python), "-X", "utf8", "-B", "-c", "from websockets.asyncio.client import connect;from importlib.metadata import version;assert version('websockets')=='15.0.1'"])
+            run([str(python), "-I", "-X", "utf8", "-B", "-c", version_check({"tts"}) + "from websockets.asyncio.client import connect"])
             add("TTS Python imports", True, True, "websockets 15.0.1; no speech request sent")
         except (OSError, subprocess.SubprocessError):
             add("TTS Python imports", True, False, "Install the pinned WebSocket client in the managed environment")
@@ -125,7 +172,7 @@ def inspect(features: set[str], python: Path,
         if not python.is_file():
             add("draft Python imports", True, False, "Python environment is missing")
         else:
-            code = (
+            code = version_check({"draft"}) + (
                 "import PIL,numpy,pyJianYingDraft as d;"
                 "from importlib.metadata import version,distribution;from pathlib import Path;"
                 "assert version('pyJianYingDraft')=='0.3.1','Unsupported package version';"
@@ -134,7 +181,7 @@ def inspect(features: set[str], python: Path,
                 "from pymediainfo import MediaInfo;assert MediaInfo.can_parse(),'System libmediainfo is missing'"
             )
             try:
-                run([str(python), "-X", "utf8", "-B", "-c", code], env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
+                run([str(python), "-I", "-X", "utf8", "-B", "-c", code], env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
                 add("draft Python imports", True, True, "Upstream pyJianYingDraft 0.3.1, media libraries and libmediainfo are available")
             except subprocess.CalledProcessError as exc:
                 # Do not print machine paths, upstream config or arbitrary subprocess output.
@@ -191,7 +238,7 @@ def main() -> int:
                            ROOT.parent if ROOT.parent.name == "skills" else Path.home() / ".agents/skills")
             if args.with_imagegen and imagegen is None:
                 target = destination / "imagegen"
-                install_skill("openai/skills", "main", "skills/.system/imagegen", target)
+                install_skill("openai/skills", IMAGEGEN_COMMIT, "skills/.system/imagegen", target)
                 imagegen = target
             packages = python_packages(features)
             if packages:
@@ -202,22 +249,18 @@ def main() -> int:
                     venv = data_dir() / "venv"
                     python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
                     if not python.is_file():
-                        run([sys.executable, "-m", "venv", str(venv)])
-                    run([str(python), "-m", "pip", "install", *packages])
+                        run([sys.executable, "-I", "-m", "venv", str(venv)])
+                    requirements = [argument for path in requirement_files(features) for argument in ("-r", str(path))]
+                    run([str(python), "-I", "-m", "pip", "--isolated", "install", "--require-hashes", "--only-binary=:all:", "--no-input", "--index-url", "https://pypi.org/simple", *requirements])
                 config["python"] = str(python.absolute())
-            if "asr" in features and coli is None:
+            if "asr" in features:
                 node, npm = shutil.which("node"), shutil.which("npm.cmd") or shutil.which("npm")
                 if not node or not npm:
                     raise RuntimeError("Node.js 20+ and npm are required to install Coli")
                 version = run([node, "--version"]).stdout.strip()
                 if int(version.lstrip("v").split(".")[0]) < 20:
                     raise RuntimeError("Coli requires Node.js 20+ for this dependency profile")
-                prefix = data_dir() / "npm"
-                run([npm, "install", "--global", "--prefix", str(prefix), COLI_PACKAGE])
-                coli_path = prefix / ("coli.cmd" if os.name == "nt" else "bin/coli")
-                if not coli_path.is_file():
-                    raise RuntimeError("Coli installation did not produce its CLI executable")
-                coli = str(coli_path)
+                coli = install_coli(npm)
             if coli:
                 config["coli_bin"] = coli
             if args.drafts_root:

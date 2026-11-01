@@ -19,7 +19,7 @@ function Get-StudioData {
 
 function Test-PythonVersion([string]$Executable, [string[]]$Prefix) {
     try {
-        $value = (& $Executable @Prefix -c 'import sys; print(sys.version_info[0]*100+sys.version_info[1])' 2>$null | Select-Object -Last 1)
+        $value = (& $Executable @Prefix -I -c 'import sys; print(sys.version_info[0]*100+sys.version_info[1])' 2>$null | Select-Object -Last 1)
         return $LASTEXITCODE -eq 0 -and [int]$value -ge 310
     } catch { return $false }
 }
@@ -126,7 +126,7 @@ function Invoke-StudioBootstrap {
     }
     if (-not $selected) { $selected = Install-PrivatePython }
     $script = Join-Path $PSScriptRoot 'bootstrap_environment.py'
-    $arguments = @('-X','utf8','-B',$script,$Action,'--features',$Features)
+    $arguments = @('-I','-X','utf8','-B',$script,$Action,'--features',$Features)
     if ($DraftsRoot) { $arguments += @('--drafts-root',$DraftsRoot) }
     if ($WithImagegen) { $arguments += '--with-imagegen' }
     if ($InstallJianying) { $arguments += '--install-jianying' }

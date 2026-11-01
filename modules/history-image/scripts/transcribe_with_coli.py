@@ -10,7 +10,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
-from studio_runtime import find_executable
+from studio_runtime import find_executable, tool_command
 
 
 def build_cues(asr):
@@ -86,7 +86,7 @@ def main():
         coli = find_executable("coli")
         if not coli:
             raise SystemExit("Local Coli unavailable; no cloud or estimated-timing fallback")
-        result = subprocess.run([coli, "asr", "-j", "--model", args.model, "--language", args.language, str(audio)], capture_output=True, text=True, encoding="utf-8")
+        result = subprocess.run(tool_command(coli, "asr", "-j", "--model", args.model, "--language", args.language, str(audio)), capture_output=True, text=True, encoding="utf-8")
         if result.returncode:
             raise SystemExit(f"Coli failed: {result.stderr.strip()}")
         asr = json.loads(result.stdout)

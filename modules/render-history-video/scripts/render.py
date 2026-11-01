@@ -9,8 +9,9 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
-from studio_runtime import activate_runtime
+from studio_runtime import activate_runtime, tool_command
 
 if __name__ == "__main__":
     activate_runtime()
@@ -22,7 +23,7 @@ from motion import resolve_plan_motion, zoom_at
 
 
 def run(args):
-    return subprocess.run(args, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return subprocess.run(tool_command(args[0], *args[1:]), check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
 def probe(path):
@@ -112,7 +113,7 @@ def render_video_shot(shot, plan, dest):
            '-threads', '2', '-pix_fmt', 'yuv420p',
            '-video_track_timescale', str(fps*512), '-movflags', '+faststart', str(dest)]
     with dest.with_suffix('.log').open('w') as log:
-        proc = subprocess.run(cmd, stderr=log)
+        proc = subprocess.run(tool_command(cmd[0], *cmd[1:]), stderr=log)
     if proc.returncode != 0:
         raise RuntimeError(f'{shot["id"]}: ffmpeg failed; inspect log')
     v = probe(dest)['streams'][0]
@@ -136,7 +137,7 @@ def render_shot(shot, plan, out):
            '-threads', '2', '-pix_fmt', 'yuv420p', '-vf', 'setsar=1',
            '-video_track_timescale', str(fps*512), '-movflags', '+faststart', str(dest)]
     with dest.with_suffix('.log').open('w') as log:
-        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=log)
+        proc = subprocess.Popen(tool_command(cmd[0], *cmd[1:]), stdin=subprocess.PIPE, stderr=log)
         try:
             for k in range(shot['frames']):
                 proc.stdin.write(transformed(im, shot, k, w, h).tobytes())

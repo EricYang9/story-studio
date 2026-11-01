@@ -15,8 +15,10 @@ import tarfile
 import urllib.request
 import zipfile
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from studio_runtime import (ROOT, data_dir, load_config, prepare_tool_paths,
-                            choose_drafts_root, find_executable, save_config)
+                            choose_drafts_root, find_executable, save_config,
+                            tool_command)
 
 
 def request(url: str) -> bytes:
@@ -93,7 +95,7 @@ def safe_extract(archive: Path, destination: Path) -> None:
 
 
 def native(command: list[str], timeout: int = 900) -> subprocess.CompletedProcess:
-    return subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
+    return subprocess.run(tool_command(command[0], *command[1:]), cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
 
 
 def node_ready() -> bool:
@@ -262,7 +264,7 @@ def main() -> int:
             install_jianying()
             if not jianying_present():
                 raise RuntimeError("Installer completed but Jianying was not detected; Agent must inspect the installation before declaring it ready")
-        command = [sys.executable, "-X", "utf8", "-B", str(ROOT / "scripts/setup_dependencies.py"), "install", "--features", ",".join(sorted(features))]
+        command = [sys.executable, "-I", "-X", "utf8", "-B", str(ROOT / "scripts/setup_dependencies.py"), "install", "--features", ",".join(sorted(features))]
         if "draft" in features:
             command.extend(["--drafts-root", str(configure_drafts(args.drafts_root))])
         if args.with_imagegen:

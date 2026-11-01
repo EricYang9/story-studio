@@ -1,0 +1,8 @@
+{
+  "name": "story-studio-coli-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@marswave/coli": "0.0.20"
+  }
+}

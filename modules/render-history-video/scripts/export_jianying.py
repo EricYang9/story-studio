@@ -14,6 +14,7 @@ import sys
 import time
 import uuid
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
 from studio_runtime import activate_runtime, choose_drafts_root
 

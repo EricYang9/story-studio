@@ -13,6 +13,7 @@ from unittest.mock import patch
 import setup_dependencies as setup
 import studio_runtime as runtime
 
+REVISION = "a" * 40
 
 class RuntimeTests(unittest.TestCase):
     def test_config_refuses_skill_directory(self):
@@ -74,7 +75,7 @@ class InstallerTests(unittest.TestCase):
             sentinel.write_text("keep existing", encoding="utf-8")
             with patch.object(setup, "run") as run:
                 with self.assertRaises(FileExistsError):
-                    setup.install_skill("owner/repository", "main", ".", destination)
+                    setup.install_skill("owner/repository", REVISION, ".", destination)
                 run.assert_not_called()
             self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep existing")
 
@@ -82,7 +83,7 @@ class InstallerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             with self.assertRaises(ValueError):
                 address = "https://" + "fixture-user" + ":" + "fixture-value" + "@example.invalid/repo"
-                setup.install_skill(address, "main", ".", Path(temporary) / "target")
+                setup.install_skill(address, REVISION, ".", Path(temporary) / "target")
 
     def test_download_failure_leaves_no_partial_skill(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -95,7 +96,7 @@ class InstallerTests(unittest.TestCase):
 
             with patch.object(setup.shutil, "which", return_value="git"), patch.object(setup, "run", side_effect=command):
                 with self.assertRaises(subprocess.CalledProcessError):
-                    setup.install_skill("owner/repository", "main", ".", destination)
+                    setup.install_skill("owner/repository", REVISION, ".", destination)
             self.assertFalse(destination.exists())
             self.assertEqual(list(Path(temporary).iterdir()), [])
 
@@ -113,7 +114,7 @@ class InstallerTests(unittest.TestCase):
                 return subprocess.CompletedProcess(args, 0, "", "")
 
             with patch.object(setup.shutil, "which", return_value="git"), patch.object(setup, "run", side_effect=command):
-                setup.install_skill("owner/repository", "main", ".", destination)
+                setup.install_skill("owner/repository", REVISION, ".", destination)
             self.assertTrue((destination / "SKILL.md").is_file())
             self.assertTrue((destination / "LICENSE").is_file())
             self.assertFalse((destination / ".env").exists())

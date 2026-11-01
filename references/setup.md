@@ -35,19 +35,19 @@ bash "<技能绝对路径>/scripts/bootstrap.sh" check --features draft,asr,imag
 bash "<技能绝对路径>/scripts/bootstrap.sh" install --features draft,asr,images,tts
 ```
 
-按需调整features；Windows的-WithImagegen、其他系统的--with-imagegen只安装缺少的可选指导技能。有Git时复用Git，没有Git自动使用GitHub官方HTTPS归档；保留上游许可，不覆盖已有技能。安装说明不会授予生图能力或付费额度。宿主缺少图像工具时Agent先检查可用连接或插件，只在需要账户授权时请用户完成授权，不收集或写入密钥。
+按需调整features；Windows的-WithImagegen、其他系统的--with-imagegen只安装缺少的可选指导技能。imagegen固定到脚本中的完整Git提交SHA；有Git时复用Git，没有Git使用GitHub官方HTTPS归档；保留上游许可，不覆盖已有技能。安装说明不会授予生图能力或付费额度。宿主缺少图像工具时Agent先检查可用连接或插件，只在需要账户授权时请用户完成授权，不收集或写入密钥。
 
 ## 安装行为
 
 1. 复用Python3.10+，推荐3.11；缺失时从Astral官方uv发布下载工具并核验SHA-256，用uv安装用户专用Python3.11。安装文件和Python位于当前用户数据目录，不改全局PATH。
-2. asr需要Node.js20+及npm；缺失时从Node.js官方下载LTS便携版本，核验官方SHA-256，再安装到专用目录。Coli固定@marswave/coli@0.0.20，使用专用npm前缀。仅对当前子进程设置工具PATH。
-3. Windows缺FFmpeg/ffprobe时使用FFmpeg官网列出的Gyan essentials构建，核验发布方SHA-256。媒体Python包安装到专用venv，已兼容的解释器可直接复用，不全局pip安装。原库会带入pymediainfo、imageio等运行依赖，实际检查MediaInfo.can_parse()。
+2. asr需要Node.js20+及npm；缺失时从Node.js官方下载LTS便携版本，核验官方SHA-256，再安装到专用目录。Coli及完整npm依赖树按随附package-lock.json安装到专用目录，执行npm ci并关闭生命周期脚本。Windows的npm、Coli通过原生Node与包内JS入口运行，参数不经过.cmd批处理。仅对当前子进程设置工具PATH。
+3. Windows缺FFmpeg/ffprobe时使用FFmpeg官网列出的Gyan essentials构建，核验发布方SHA-256。媒体Python包按requirements-*.lock中的完整版本与wheel哈希安装，启用--require-hashes及--only-binary=:all:；缺包时安装到专用venv，已有解释器须通过锁定版本检查。Python探测、venv和pip子进程均使用-I；实际检查MediaInfo.can_parse()。
 4. macOS复用Homebrew安装ffmpeg、libmediainfo；Debian/Ubuntu复用apt安装ffmpeg、libmediainfo0v5。没有包管理器或其他系统时由Agent选择官方安装方式并继续配置。系统权限不足时按宿主提供的授权流程申请；不要求用户自行运行sudo或安装命令。无法获得授权则保留已完成部分并准确说明阻塞，不宣称全部就绪。
 5. Windows请求安装剪映时，已有应用直接复用；缺失则先用WinGet用户级静默安装。没有WinGet时读取Microsoft维护的剪映清单，下载厂商安装器并核验清单SHA-256，使用其声明的静默参数。安装后重新检测。安装器、网络或系统授权异常时Agent检查官方来源处理，不反复盲目重试。
 6. 草稿目录依次使用显式参数、环境、运行配置、剪映globalSetting中的currentCustomDraftPath、已有标准目录。新Windows安装自动创建标准草稿目录；其他系统可保存工程到专用drafts目录。已有剪映设置仍无法读出时由Agent查看设置核对，避免用户手动找路径。只读取相关明文设置，不读取应用凭据或账户存储。
 7. 完成后重跑同一原生入口check及setup_dependencies.py check。检查Python库版本、模块来源、API、libmediainfo、FFmpeg/ffprobe、Coli位置及所需应用。asr实际执行前核验Coli能运行；首次转录可下载模型，初始化不下载模型、不上传音频，不调用火山字幕API。
 
-脚本是可重复入口，不是后台安装服务。遇到失败返回agent_action_required或error时，Agent查看当前失败项、修复可控问题后再运行；不要把原始错误、私人路径或用户手动命令作为最终交付。网络下载与软件安装在用户已授权范围内执行；系统授权、账户登录和工具授权仍可能需要用户本人操作。
+脚本是可重复入口，不是后台安装服务。遇到失败返回agent_action_required或error时，Agent查看当前失败项、修复可控问题后再运行；锁校验失败时保持隔离模式和哈希要求，核对具体包、平台与下载来源；依赖升级须重新生成并审查完整锁。不要把原始错误、私人路径或用户手动命令作为最终交付。网络下载与软件安装在用户已授权范围内执行；系统授权、账户登录和工具授权仍可能需要用户本人操作。
 
 ## 配置与验证范围
 

@@ -12,9 +12,11 @@ import os
 from pathlib import Path
 import struct
 import subprocess
+import sys
 import uuid
 
-from studio_runtime import activate_runtime, find_executable
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from studio_runtime import activate_runtime, find_executable, tool_command
 from voice_settings import VoiceConfigError, load_profile, read_api_key, validate_profile
 
 URL = "wss://openspeech.bytedance.com/api/v3/tts/bidirection"
@@ -184,13 +186,13 @@ async def synthesize(text: str, profile: dict, key: str, partial: Path) -> None:
 
 
 def validate_audio(path: Path, ffprobe: str, ffmpeg: str) -> float:
-    result = subprocess.run([ffprobe, "-v", "error", "-show_format", "-show_streams", "-of", "json", str(path)],
+    result = subprocess.run(tool_command(ffprobe, "-v", "error", "-show_format", "-show_streams", "-of", "json", str(path)),
                             capture_output=True, text=True, encoding="utf-8", check=True, timeout=120)
     info = json.loads(result.stdout)
     duration = float(info.get("format", {}).get("duration", 0))
     if duration <= 0 or not any(stream.get("codec_name") == "mp3" for stream in info.get("streams", [])):
         raise TtsError("TTS result is not a nonempty MP3")
-    subprocess.run([ffmpeg, "-v", "error", "-xerror", "-i", str(path), "-f", "null", "-"],
+    subprocess.run(tool_command(ffmpeg, "-v", "error", "-xerror", "-i", str(path), "-f", "null", "-"),
                    capture_output=True, check=True, timeout=600)
     return duration
 
@@ -228,7 +230,7 @@ def main() -> int:
         if not ffmpeg or not ffprobe:
             raise TtsError("Initialize the tts dependency profile before synthesis")
         for tool in (ffmpeg, ffprobe):
-            subprocess.run([tool, "-version"], capture_output=True, check=True, timeout=20)
+            subprocess.run(tool_command(tool, "-version"), capture_output=True, check=True, timeout=20)
         from websockets.asyncio.client import connect  # Check dependency before using a key.
         key = read_api_key()
         args.output.parent.mkdir(parents=True, exist_ok=True)

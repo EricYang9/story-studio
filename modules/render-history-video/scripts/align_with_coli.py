@@ -10,7 +10,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
-from studio_runtime import find_executable
+from studio_runtime import find_executable, tool_command
 
 
 def norm(text: str) -> str:
@@ -125,7 +125,7 @@ def main():
         coli = find_executable("coli")
         if not coli:
             raise SystemExit("Local Coli CLI not found on PATH; install/enable coli before rendering without SRT.")
-        cmd = [coli, "asr", "-j", "--model", args.model, "--language", args.language, str(audio)]
+        cmd = tool_command(coli, "asr", "-j", "--model", args.model, "--language", args.language, str(audio))
         proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", check=False)
         if proc.returncode != 0:
             raise SystemExit(f"Coli ASR failed ({proc.returncode}): {proc.stderr.strip()}")

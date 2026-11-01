@@ -133,6 +133,38 @@ def find_executable(name: str) -> str | None:
     return shutil.which(name)
 
 
+def tool_command(executable: str, *arguments: str) -> list[str]:
+    """Run npm CLIs through Node instead of exposing arguments to cmd.exe."""
+    selected = shutil.which(executable) or executable
+    shim = Path(selected).expanduser().absolute()
+    if shim.suffix.lower() not in {".cmd", ".bat"}:
+        return [executable, *arguments]
+    packages = {"coli": "@marswave/coli", "npm": "npm"}
+    name = shim.stem.lower()
+    package_name = packages.get(name)
+    if package_name is None:
+        raise ValueError("Batch-file tools require a verified native or Node entry point")
+    for package in (shim.parent / "node_modules" / package_name,
+                    shim.parent.parent / package_name):
+        manifest = package / "package.json"
+        if not manifest.is_file():
+            continue
+        metadata = json.loads(manifest.read_text(encoding="utf-8-sig"))
+        bins = metadata.get("bin", {})
+        relative = bins.get(name) if isinstance(bins, dict) else bins
+        if metadata.get("name") != package_name or not isinstance(relative, str):
+            raise ValueError("Unexpected npm CLI package metadata")
+        entry = (package / relative).resolve()
+        if not entry.is_relative_to(package.resolve()) or not entry.is_file() or entry.suffix not in {".js", ".cjs", ".mjs"}:
+            raise ValueError("The npm CLI entry point must remain inside its package")
+        adjacent = shim.parent / "node.exe"
+        node = str(adjacent) if adjacent.is_file() else shutil.which("node.exe") or shutil.which("node")
+        if not node or Path(node).suffix.lower() in {".cmd", ".bat"}:
+            raise RuntimeError("A native Node executable is required to run this CLI safely")
+        return [str(Path(node).resolve()), str(entry), *arguments]
+    raise RuntimeError("Could not locate the npm package behind the batch-file tool")
+
+
 def activate_runtime() -> None:
     """Entry scripts can re-exec the interpreter configured by the installer."""
     prepare_tool_paths()
@@ -148,7 +180,7 @@ def activate_runtime() -> None:
                 raise RuntimeError("Managed Python could not be activated")
             env = dict(os.environ, STORY_STUDIO_REEXEC="1", PYTHONUTF8="1")
             # A child interpreter preserves Windows DLL loading and pipe handles.
-            result = subprocess.run([str(executable), "-X", "utf8", *sys.argv], env=env)
+            result = subprocess.run([str(executable), "-I", "-X", "utf8", *sys.argv], env=env)
             raise SystemExit(result.returncode)
     if config.get("drafts_root") and not os.environ.get("JY_PROJECTS_ROOT"):
         os.environ["JY_PROJECTS_ROOT"] = config["drafts_root"]

@@ -11,7 +11,7 @@ fi
 studio_data="${XDG_DATA_HOME:-$HOME/.local/share}/story-studio"
 studio_python=""
 for candidate in python3 python; do
-  if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3,10) else 1)' >/dev/null 2>&1; then
+  if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -I -c 'import sys; sys.exit(0 if sys.version_info >= (3,10) else 1)' >/dev/null 2>&1; then
     studio_python="$(command -v "$candidate")"
     break
   fi
@@ -59,4 +59,4 @@ if [[ -z "$studio_python" ]]; then
   "$studio_uv" python install 3.11
   studio_python="$("$studio_uv" python find --managed-python 3.11)"
 fi
-exec "$studio_python" -X utf8 -B "$studio_script_dir/bootstrap_environment.py" "$studio_action" "$@"
+exec "$studio_python" -I -X utf8 -B "$studio_script_dir/bootstrap_environment.py" "$studio_action" "$@"

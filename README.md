@@ -100,8 +100,8 @@ flowchart LR
 
 #### 路径 A：推荐配置「豆包语音大模型」，由 Agent 全自动合成
 - 基于火山引擎豆包语音 **V3 双向流式 WebSocket 协议**，支持最新的 `seed-tts-2.0`（2.0通用高表现力音色）与 `seed-icl-2.0`（声音复刻2.0音色）。
-- **安全省心**：你只需在[豆包语音控制台](https://console.volcengine.com/speech/new)获取 `API Key`、`speaker ID（音色ID）` 和 `resource_id`。API Key 支持通过系统加密存储（Windows DPAPI / macOS & Linux 0600 权限文件）或环境变量保存，**绝不写入代码仓库或项目明文**。
-- **防重复扣费与完整性核验**：合成前确认音色与语速，合成后自动通过 `ffprobe/ffmpeg` 校验音频完整性，并记录文本与音频哈希，同稿同音色绝不重复发起收费请求。
+- **密钥存储**：你只需在[豆包语音控制台](https://console.volcengine.com/speech/new)获取 `API Key`、`speaker ID（音色ID）` 和 `resource_id`。API Key 可使用宿主密钥环境变量；本地保存时，macOS 使用系统钥匙串，Windows 使用 DPAPI，Linux 须明确选择 `0600` 权限的明文文件。Key 不写入代码仓库或项目文件。
+- **防覆盖与完整性核验**：合成前确认音色与语速，合成后自动通过 `ffprobe/ffmpeg` 校验音频完整性，并记录文本与音频哈希。已有同名输出时拒绝覆盖，失败不自动重试；换名重新合成仍可能产生费用。
 
 #### 路径 B：提前准备好配音 MP3，放入文件夹让 Agent 直接读取
 - 如果你习惯使用剪映克隆音色、其他 TTS 软件，或者**真人自己录好音**，只需将最终的 `.mp3` 音频文件丢进项目文件夹，告诉 Agent：*“配音我已经放进文件夹了，直接用这个音频继续做分镜和剪映草稿”*。
@@ -127,6 +127,8 @@ flowchart LR
 
 ## 🚀 快速开始
 
+> 本 fork 基于[上游项目](https://github.com/konlu/story-studio)的 `bb6cb5a857deb6cd12e2b9292c38cc5c37ab8d02`，加入隔离启动、Windows CLI 参数保护、完整 Python/npm 依赖锁与 macOS 钥匙串支持。安装安全修复版请使用[本仓库](https://github.com/EricYang9/story-studio)，并保留 `scripts/dependencies/`。
+
 ### 第一步：一键安装 Skill（提供三种超简便方式）
 
 你可以根据自己的使用习惯，选择以下任意一种方式进行一键安装：
@@ -135,32 +137,20 @@ flowchart LR
 如果你的 Agent（如 Codex、Claude Code、Cursor 等）拥有终端执行权限，你**连命令行都不用打开**，直接在任意对话框中发送：
 
 ```text
-请帮我把这个 GitHub 仓库克隆安装到你的 skills 目录，并完成依赖环境检查：
-https://github.com/konlu/story-studio
-Agent 会自动识别自身 skills 目录（如 `~/.codex/skills/story-studio`），自动拉取并完成接入！
+请将 https://github.com/EricYang9/story-studio 安装到你的 skills 目录，保留 scripts/dependencies，并按本次需要检查和配置环境。同名目录已存在时先保留备份。
+```
 
 ---
 
-#### 方式 B（极客·一行命令直达）：终端一条命令克隆
-打开终端（Terminal 或 PowerShell），粘贴对应系统的一行命令即可：
-
-```powershell
-# Windows (PowerShell)
-git clone https://github.com/konlu/story-studio.git "$HOME\.codex\skills\story-studio"
-```
-
-```bash
-# macOS / Linux
-git clone https://github.com/konlu/story-studio.git ~/.codex/skills/story-studio
-```
-> 💡 *注：若使用 Claude Code 或其他 Agent，只需将路径中的 `.codex` 替换为 `.claude` 或 `.agents` 即可。*
+#### 方式 B：复制技能目录
+把包含 SKILL.md 的整个 story-studio 目录复制到宿主的 skills 目录。Codex 可使用用户目录下的 `.agents/skills/story-studio`；同名目录已存在时先备份，保留完整参考资源与依赖锁文件。
 
 ---
 
 #### 方式 C（下载 Zip 用户）：双击一键安装器
 如果你是从 GitHub 下载的 Release 压缩包（`.zip`），解压后无需手动翻找系统隐藏目录：
 - **Windows**：直接双击运行文件夹内的 **`install.bat`**
-- **macOS / Linux**：终端进入该文件夹后运行 **`./install.sh`**
+- **macOS / Linux**：终端进入该文件夹后运行 **`bash ./install.sh`**
 
 脚本会自动探测系统中可用的 Agent 技能目录并自动部署到位。
 
@@ -247,7 +237,7 @@ story-studio/
 ├── scripts/                        # 跨平台环境自动初始化、豆包TTS、交接核验等核心脚本
 │   ├── bootstrap.ps1 / .sh         # Windows / macOS / Linux 零依赖启动器
 │   ├── doubao_tts.py               # 豆包语音 V3 双向 WebSocket 合成客户端
-│   ├── voice_settings.py           # 音色配置与本地加密凭据管理
+│   ├── voice_settings.py           # 音色配置与平台凭据存储
 │   └── check_handoff.py            # 剪映导出前的音图语义与时间轴一致性检查
 ├── references/                     # 事实核查原则、豆包配置指南、扩展赛道说明等
 └── modules/                        # 内置四大专业子模块
@@ -280,7 +270,7 @@ Story Studio 内置的启动器会在技能目录之外的**用户数据目录**
 
 ### 2. 账号安全与隐私保护边界
 - **零私人信息残留**：本开源仓库的源码、示例与语料索引均经过脱敏与哈希化处理，不包含任何个人电脑路径、账户信息或密钥。
-- **密钥安全存储**：豆包语音 `API Key` 仅从环境变量 `DOUBAO_TTS_API_KEY` 或系统级安全凭据文件读取（Windows 采用当前用户 DPAPI 加密，macOS/Linux 采用 `0600` 权限私密文件），**绝不写入对话日志、项目 JSON 或 Git 仓库**。
+- **密钥存储边界**：豆包语音 `API Key` 从宿主密钥环境变量 `DOUBAO_TTS_API_KEY`、macOS 系统钥匙串或 Windows DPAPI 文件读取。Linux 明文文件需要显式启用并使用 `0600` 权限；权限限制不等于加密。Key 不写入项目 JSON 或 Git 仓库，日志不回显其值。
 - **费用透明可控**：Skill 本身完全免费开源。豆包语音合成（TTS）与宿主环境中的 AI 生图工具可能产生对应服务商的 API 费用；Agent 在首次合成或批量生图前均会征求确认，绝不在后台静默发起循环重试扣费。
 
 ---

@@ -17,7 +17,9 @@ description: 历史与真实人物故事的中文内容制作，按需独立执�
 
 草稿导出直接使用Python库 `pyJianYingDraft==0.3.1`，无需安装额外草稿技能。实际生图可用宿主图像工具，`imagegen` 是可选指导技能；Coli是本地转录CLI。依赖与作者见 [README](README.md)。
 
-初始化后，所有模块示例中的python、python3或py -3.11均替换为外部runtime.json记录的python可执行程序绝对路径；不能假设便携安装已加入全局PATH或存在py启动器。
+初始化后，所有模块示例中的python、python3或py -3.11均替换为外部runtime.json记录的python可执行程序绝对路径，并在解释器参数中添加 `-I` 隔离模式。脚本自行定位技能内模块；不从当前创作项目或PYTHONPATH加载依赖。不能假设便携安装已加入全局PATH或存在py启动器。
+
+依赖安装使用 `scripts/dependencies/` 随附的版本锁和完整性哈希。校验失败时保留原锁，核对下载来源；缺少匹配wheel时使用兼容的受管Python3.11。更新依赖时先审查变化，再同步更新完整锁文件与回归验证。
 
 ## 解析本次请求
 

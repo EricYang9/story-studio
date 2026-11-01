@@ -62,12 +62,19 @@ class VoiceSettingsTests(unittest.TestCase):
     def test_key_saved_outside_source_and_not_echoed(self):
         with tempfile.TemporaryDirectory() as temporary:
             marker = "fixture-only-not-a-real-key"
-            with patch.object(settings, "data_dir", return_value=Path(temporary)), patch.dict(os.environ, {"DOUBAO_TTS_API_KEY": ""}), patch.object(sys, "argv", ["voice_settings.py", "configure", "--speaker", "fixture-voice", "--resource-id", "seed-tts-2.0", "--key-stdin"]), patch.object(sys, "stdin", io.StringIO(marker + "\n")), contextlib.redirect_stdout(io.StringIO()) as output:
+            stored = {}
+            def keychain(operation, value=None):
+                if operation == "write":
+                    stored["key"] = value
+                return bool(stored) if operation == "present" else stored.get("key")
+            with patch.object(settings, "data_dir", return_value=Path(temporary)), patch.object(settings, "_keychain", side_effect=keychain), patch.dict(os.environ, {"DOUBAO_TTS_API_KEY": ""}), patch.object(sys, "argv", ["voice_settings.py", "configure", "--speaker", "fixture-voice", "--resource-id", "seed-tts-2.0", "--key-stdin", "--allow-plaintext-key-file"]), patch.object(sys, "stdin", io.StringIO(marker + "\n")), contextlib.redirect_stdout(io.StringIO()) as output:
                 self.assertEqual(settings.main(), 0)
                 self.assertNotIn(marker, output.getvalue())
                 self.assertNotIn(marker, settings.profile_path().read_text())
                 self.assertEqual(settings.read_api_key(), marker)
-                if os.name == "nt":
+                if sys.platform == "darwin":
+                    self.assertFalse(settings.secret_path().exists())
+                elif os.name == "nt":
                     self.assertNotIn(marker.encode(), settings.secret_path().read_bytes())
                 else:
                     self.assertEqual(settings.secret_path().stat().st_mode & 0o777, 0o600)
@@ -86,7 +93,7 @@ class VoiceSettingsTests(unittest.TestCase):
 
     def test_missing_profile_or_key_reports_incomplete_without_network(self):
         with tempfile.TemporaryDirectory() as temporary:
-            with patch.object(settings, "data_dir", return_value=Path(temporary)), patch.dict(os.environ, {"DOUBAO_TTS_API_KEY": ""}), patch.object(sys, "argv", ["voice_settings.py", "check"]), contextlib.redirect_stdout(io.StringIO()) as output:
+            with patch.object(settings, "data_dir", return_value=Path(temporary)), patch.object(settings, "_keychain", return_value=False), patch.dict(os.environ, {"DOUBAO_TTS_API_KEY": ""}), patch.object(sys, "argv", ["voice_settings.py", "check"]), contextlib.redirect_stdout(io.StringIO()) as output:
                 self.assertEqual(settings.main(), 1)
             report = json.loads(output.getvalue())
             self.assertFalse(report["profile_ready"])

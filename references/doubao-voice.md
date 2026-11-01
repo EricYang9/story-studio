@@ -34,18 +34,20 @@
 
 先按[初始化流程](setup.md)检查/配置features=tts；后面还需转录和草稿时用tts,asr,draft,images。缺少的Python、websockets和FFmpeg由Agent安装，不要求用户执行命令。依赖安装不需要语音Key，也不会发送收费测试。
 
-API Key优先从宿主安全配置的DOUBAO_TTS_API_KEY读取。只检查存在性，不显示值；不要要求在公开聊天中粘贴Key。若用户已经通过可用的保密渠道提供Key，且同意在当前电脑保存，Agent可用voice_settings.py的--key-stdin从标准输入写入专用凭据文件，不把Key放到命令参数、shell历史、项目JSON或日志。--prompt-key仅用于宿主能直接提供隐藏输入的交互终端，不要求用户自行打开终端。没有保密输入能力时引导到宿主密钥/环境变量面板，不能伪称已配置。
+API Key优先从宿主安全配置的DOUBAO_TTS_API_KEY读取。只检查存在性，不显示值；不要要求在公开聊天中粘贴Key。若用户已经通过可用的保密渠道提供Key，且同意在当前电脑保存，Agent可用voice_settings.py的--key-stdin从标准输入写入对应平台的凭据存储，不把Key放到命令参数、shell历史、项目JSON或日志。--prompt-key仅用于宿主能直接提供隐藏输入的交互终端，不要求用户自行打开终端。没有保密输入能力时引导到宿主密钥/环境变量面板，不能伪称已配置。
 
 Agent使用初始化记录的Python绝对路径运行：
 
 ```text
-"<配置的Python>" "<技能绝对路径>/scripts/voice_settings.py" check
-"<配置的Python>" "<技能绝对路径>/scripts/voice_settings.py" configure --speaker "<用户的speaker ID>" --resource-id "<用户选择的resource_id>"
+"<配置的Python>" -I "<技能绝对路径>/scripts/voice_settings.py" check
+"<配置的Python>" -I "<技能绝对路径>/scripts/voice_settings.py" configure --speaker "<用户的speaker ID>" --resource-id "<用户选择的resource_id>"
 ```
 
 复刻音色明确需要细分模型时加--model。若要保存已授权的Key，在configure命令加--key-stdin并通过进程标准输入传入；不能使用带实际密钥的--api-key参数。仅保存音色时缺少Key会返回未就绪状态，音色配置仍已保存。check不联网，只返回Key是否存在、非秘密的音色参数和network_verified=false。
 
-音色参数保存到用户数据目录story-studio/voice.json，与runtime.json分开。可选Key保存到同一专用目录：Windows使用当前用户DPAPI加密文件；macOS/Linux是权限0600的本地私密文件，保存前说明这一点，用户不愿保存时直接复用宿主密钥环境变量。源码目录拒绝写入这些配置；发布、打包或提交代码时不包含用户数据目录。
+音色参数保存到用户数据目录story-studio/voice.json，与runtime.json分开。macOS的Key通过Security框架写入系统钥匙串（服务story-studio.doubao-tts，账户api-key），不可用时返回配置错误，保留原存储方式而不降级为明文文件。Windows使用当前用户DPAPI加密文件。Linux默认使用宿主密钥环境变量；只有用户明确接受本地明文存储时才添加--allow-plaintext-key-file，文件权限为0600，这不是加密。源码目录拒绝写入这些配置；发布、打包或提交代码时不包含用户数据目录。
+
+升级前留下的macOS doubao-key.secret不会被自动读取或删除；通过安全输入重新保存到钥匙串即可使用新存储，旧文件清理由用户另行决定。check只查询钥匙串属性，不读取Key内容；实际合成时系统可能要求解锁或授权访问钥匙串。
 
 ## 本期确认与生成MP3
 

@@ -150,7 +150,7 @@ class BootstrapTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             with patch.object(bootstrap, "choose_drafts_root", side_effect=RuntimeError("not yet configured")), patch.dict(os.environ, {"LOCALAPPDATA": temporary}), patch.object(bootstrap, "data_dir", return_value=Path(temporary)):
                 selected = bootstrap.configure_drafts(None)
-                self.assertTrue(selected.is_relative_to(Path(temporary)))
+                self.assertTrue(selected.is_relative_to(Path(temporary).resolve()))
                 self.assertTrue(selected.is_dir())
 
     def test_tool_paths_are_process_local_and_deduplicated(self):
@@ -172,7 +172,7 @@ class BootstrapTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             destination = Path(temporary) / "helper"
             with patch.object(setup.shutil, "which", return_value=None), patch.object(setup.urllib.request, "urlopen", return_value=io.BytesIO(payload.getvalue())), patch.object(setup, "run") as execute:
-                setup.install_skill("owner/repository", "main", "skills/helper", destination)
+                setup.install_skill("owner/repository", "a" * 40, "skills/helper", destination)
                 execute.assert_not_called()
             self.assertEqual((destination / "LICENSE").read_text(), "upstream license")
             self.assertTrue((destination / "SKILL.md").is_file())
